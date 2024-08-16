@@ -17,7 +17,7 @@
 
 # # Fuzzy C-means 클러스터링
 # def fuzzy_c_means_clustering(cities, k):
-#     fcm = FCM(n_clusters=k, random_state=65)
+#     fcm = FCM(n_clusters=k, random_state=65, max_iter=150,m=2,error=1e-5)
 #     fcm.fit(cities)
 #     centers = fcm.centers
 #     u_matrix = fcm.u  # 멤버십 행렬
@@ -47,17 +47,19 @@
 #     distance += np.linalg.norm(path[-1] - path[0])  # 원점 복귀 거리 추가
 #     return distance
 
-# def evaluate_performance(cities, k):
+# def evaluate_performance_fuzzy(cities, k):
 #     # Fuzzy C-means 클러스터링 및 TSP 해결
 #     start_time = time.time()
 #     labels, u_matrix, centers = fuzzy_c_means_clustering(cities, k)
+#     clustering_time = time.time() - start_time
 #     tsp_paths, total_distance = solve_tsp_in_clusters(cities, labels, k)
-#     computation_time = time.time() - start_time
-
+#     tsp_time = time.time() - clustering_time -start_time
+#     computation_time = tsp_time + clustering_time
 #     # 결과 출력
 #     print(f"총 경로 거리: {total_distance:.2f}")
-#     print(f"계산 시간: {computation_time:.2f} 초")
-
+#     print(f"clustering 계산 시간: {clustering_time:.3f} 초")
+#     print(f"tsp 계산 시간: {tsp_time:.3f} 초")
+#     print(f"총 계산 시간: {computation_time:.3f} 초")
 #     # 멤버십 및 TSP 경로 시각화
 #     plot_membership_and_paths(cities, u_matrix, centers, tsp_paths, labels)
 
@@ -76,7 +78,7 @@
 #         plt.scatter(cities[:, 0], cities[:, 1], s=sizes, color=colors[j % len(colors)], alpha=0.5, label=f'Cluster {j+1} Membership')
     
 #     # 클러스터 중심 시각화
-#     plt.scatter(centers[:, 0], centers[:, 1], c='black', marker='x', s=200, label='Cluster Centers')
+#     plt.scatter(centers[:, 0], centers[:, 1], c='black', marker='x', s=50, label='Cluster Centers')
     
 #     # TSP 경로 시각화 (각 클러스터마다 다른 색상 사용)
 #     for i, path in enumerate(tsp_paths):
@@ -94,12 +96,30 @@
 #     plt.show()
 
 # # 데이터 로드
-# cities = load_kroa100('kroA100.tsp')
+# cities = load_kroa100('kroA200.tsp')
 
-# # Fuzzy C-means 클러스터링 및 성능 평가
+# # 기존 Fuzzy C-means 클러스터링 수행
 # k = 3  # 클러스터 수 설정
-# total_distance, computation_time = evaluate_performance(cities, k)
+# print("기존 데이터에 대한 성능 평가:")
+# total_distance, computation_time = evaluate_performance_fuzzy(cities, k)
 
+# # 새로운 task 데이터 추가
+# def add_new_tasks(cities, new_tasks):
+#     # 새로운 task 데이터를 기존 데이터에 추가
+#     updated_cities = np.vstack((cities, new_tasks))
+#     return updated_cities
+
+# # 예시로 새로운 task 데이터 생성
+# new_tasks = np.array([
+#     [1500.0, 1600.0],  # 새로운 도시 1
+#     [1400.0, 1550.0],   # 새로운 도시 2
+#     [2000.0, 250.0]   # 새로운 도시 3
+# ])
+
+# # 새로운 데이터로 Fuzzy C-means 클러스터링 및 성능 평가
+# updated_cities = add_new_tasks(cities, new_tasks)
+# print("새로운 데이터 추가 후 성능 평가:")
+# total_distance, computation_time = evaluate_performance_fuzzy(updated_cities, k)
 import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -119,7 +139,7 @@ def load_kroa100(file_path):
 
 # Fuzzy C-means 클러스터링
 def fuzzy_c_means_clustering(cities, k):
-    fcm = FCM(n_clusters=k, random_state=65, m=2)
+    fcm = FCM(n_clusters=k, random_state=65, max_iter=150, m=2, error=1e-5)
     fcm.fit(cities)
     centers = fcm.centers
     u_matrix = fcm.u  # 멤버십 행렬
@@ -133,13 +153,19 @@ def solve_tsp_in_clusters(cities, labels, k):
     total_distance = 0
     for cluster in clusters:
         G = nx.complete_graph(len(cluster))
+        pos = {i: cluster[i] for i in range(len(cluster))}
+        nx.set_node_attributes(G, pos, 'pos')
+        
+        # 각 엣지의 가중치로 유클리드 거리 설정
         for i in range(len(cluster)):
             for j in range(i + 1, len(cluster)):
                 dist = np.linalg.norm(cluster[i] - cluster[j])
                 G.add_edge(i, j, weight=dist)
+        
         tsp_path = nx.approximation.traveling_salesman_problem(G, cycle=True)
-        tsp_paths.append(cluster[tsp_path])
-        total_distance += calculate_path_distance(cluster[tsp_path])
+        ordered_path = [cluster[node] for node in tsp_path]
+        tsp_paths.append(np.array(ordered_path))
+        total_distance += calculate_path_distance(ordered_path)
     return tsp_paths, total_distance
 
 def calculate_path_distance(path):
@@ -155,7 +181,7 @@ def evaluate_performance_fuzzy(cities, k):
     labels, u_matrix, centers = fuzzy_c_means_clustering(cities, k)
     clustering_time = time.time() - start_time
     tsp_paths, total_distance = solve_tsp_in_clusters(cities, labels, k)
-    tsp_time = time.time() - clustering_time -start_time
+    tsp_time = time.time() - clustering_time - start_time
     computation_time = tsp_time + clustering_time
     # 결과 출력
     print(f"총 경로 거리: {total_distance:.2f}")
@@ -176,7 +202,7 @@ def plot_membership_and_paths(cities, u_matrix, centers, tsp_paths, labels):
     
     # 각 클러스터에 대한 멤버십 값 시각화
     for j in range(u_matrix.shape[1]):
-        sizes = u_matrix[:, j] * 500  # 멤버십 값을 기반으로 원 크기 조절
+        sizes = u_matrix[:, j] * 1000  # 멤버십 값을 기반으로 원 크기 조절
         plt.scatter(cities[:, 0], cities[:, 1], s=sizes, color=colors[j % len(colors)], alpha=0.5, label=f'Cluster {j+1} Membership')
     
     # 클러스터 중심 시각화
@@ -186,7 +212,8 @@ def plot_membership_and_paths(cities, u_matrix, centers, tsp_paths, labels):
     for i, path in enumerate(tsp_paths):
         cluster_color = colors[i % len(colors)]  # 클러스터별 색상 선택
         plt.plot(path[:, 0], path[:, 1], color=cluster_color, marker='o', linestyle='-', label=f'Cluster {i+1} TSP Path')
-    
+        plt.scatter(path[0, 0], path[0, 1], c=cluster_color, s=100, edgecolors='k', label=f'Start of Cluster {i+1}')
+
     plt.title('Fuzzy C-Means Clustering with TSP Paths')
     plt.xlabel('X Coordinate')
     plt.ylabel('Y Coordinate')
@@ -197,10 +224,9 @@ def plot_membership_and_paths(cities, u_matrix, centers, tsp_paths, labels):
     
     plt.show()
 
-# 데이터 로드
-cities = load_kroa100('kroA200.tsp')
+# 기존 데이터 로드 및 성능 평가
+cities = load_kroa100('kroA100.tsp')
 
-# 기존 Fuzzy C-means 클러스터링 수행
 k = 3  # 클러스터 수 설정
 print("기존 데이터에 대한 성능 평가:")
 total_distance, computation_time = evaluate_performance_fuzzy(cities, k)
@@ -214,7 +240,7 @@ def add_new_tasks(cities, new_tasks):
 # 예시로 새로운 task 데이터 생성
 new_tasks = np.array([
     [1500.0, 1600.0],  # 새로운 도시 1
-    [1400.0, 1550.0],   # 새로운 도시 2
+    [1400.0, 1550.0], # 새로운 도시 2
     [2000.0, 250.0]   # 새로운 도시 3
 ])
 

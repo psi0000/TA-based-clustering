@@ -17,7 +17,7 @@ def load_kroa100(file_path):
 
 # K-means 클러스터링
 def kmeans_clustering(cities, k):
-    kmeans = KMeans(n_clusters=k, random_state=65)
+    kmeans = KMeans(n_clusters=k, random_state=65,max_iter=150)
     kmeans.fit(cities)
     centers = kmeans.cluster_centers_
     labels = kmeans.labels_
